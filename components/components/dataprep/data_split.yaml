@@ -1,0 +1,40 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+
+name: data_split_mnist_cli
+version: 0.1.1
+display_name: MNIST Data Split (Subset)
+description: Combines selected MNIST digit folders and splits into train/test sets.
+type: command
+
+code: ./code
+environment: azureml:aml-Pillow-cli:0.1.0
+
+command: >-
+  python traintestsplit.py
+  --datasets ${{inputs.mnist_2}} ${{inputs.mnist_7}} ${{inputs.mnist_8}}
+  --split_size ${{inputs.train_test_split_factor}}
+  --training_data_output ${{outputs.training_data}}
+  --testing_data_output ${{outputs.testing_data}}
+
+inputs:
+  mnist_2:
+    type: uri_folder
+    optional: false
+  mnist_7:
+    type: uri_folder
+    optional: false
+  mnist_8:
+    type: uri_folder
+    optional: false
+  train_test_split_factor:
+    type: number
+    optional: false
+
+outputs:
+  training_data:
+    type: uri_folder
+  testing_data:
+    type: uri_folder
+
+resources:
+  instance_count: 1

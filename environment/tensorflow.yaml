@@ -1,0 +1,13 @@
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+
+name: aml-tensorflow-mnist-cli
+version: 0.1.0
+description: TensorFlow + Pillow environment for MNIST training
+
+os_type: linux
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04:latest
+conda_file: ../components/components/training/conda.yaml
+
+tags:
+  framework: TensorFlow
+  version: 2.6.0

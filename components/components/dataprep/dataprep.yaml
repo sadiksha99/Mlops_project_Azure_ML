@@ -1,0 +1,30 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+
+name: dataprep_mnist_jpg_converter
+version: 0.1.1
+display_name: MNIST PNG to JPG Converter
+description: Convert PNG images to JPG format for MNIST digits using Pillow.
+
+type: command
+is_deterministic: true
+
+environment: azureml:aml-Pillow-cli:0.1.0
+resources:
+  instance_count: 1
+
+code: ./code
+command: >-
+  python dataprep.py
+  --data ${{inputs.data}}
+  --output_data ${{outputs.output_data}}
+
+inputs:
+  data:
+    type: uri_folder
+    description: Folder containing input PNG images
+    optional: false
+
+outputs:
+  output_data:
+    type: uri_folder
+    description: Folder to store converted JPG images

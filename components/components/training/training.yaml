@@ -1,0 +1,35 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+
+name: training_mnist_cli
+version: 0.1.0
+display_name: MNIST CNN Training
+description: Trains a CNN on selected MNIST digits using JPEG images.
+type: command
+
+code: ./code
+environment: azureml:aml-tensorflow-mnist-cli:0.1.0
+
+command: >-
+  python train.py
+  --training_folder ${{inputs.training_folder}}
+  --testing_folder ${{inputs.testing_folder}}
+  --epochs ${{inputs.epochs}}
+  --output_folder ${{outputs.output_folder}}
+
+inputs:
+  training_folder:
+    type: uri_folder
+    optional: false
+  testing_folder:
+    type: uri_folder
+    optional: false
+  epochs:
+    type: number
+    optional: false
+
+outputs:
+  output_folder:
+    type: uri_folder
+
+resources:
+  instance_count: 1
