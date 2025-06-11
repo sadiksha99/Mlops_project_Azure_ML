@@ -1,91 +1,68 @@
-$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+name: Azure ML Pipeline Setup
 
-name: mnist-training-pipeline-v12
-display_name: MNIST Full Preprocessing & Training
-experiment_name: mnist-training
-type: pipeline
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 
-inputs:
-  train_test_split_factor: 20
-  epochs: 20
-
-  mnist_2_raw:
-    type: uri_folder
-    path: azureml:mnist-2:1
-  mnist_7_raw:
-    type: uri_folder
-    path: azureml:mnist-7:1
-  mnist_8_raw:
-    type: uri_folder
-    path: azureml:mnist-8:1
-
-outputs:
-  model:
-    type: uri_folder
-
-settings:
-  default_compute: azureml:cli-created-machine-v2
+env:
+  GROUP: mlops-project
+  WORKSPACE: sadiksha-sapkota-ml
+  LOCATION: westeurope
+  COMPUTE_NAME: cli-created-machine-v2
 
 jobs:
+  setup-and-run:
+    runs-on: ubuntu-latest
 
-  resize_mnist_2:
-    type: command
-    component: azureml:dataprep_mnist_jpg_converter:0.1.1
-    inputs:
-      data: ${{parent.inputs.mnist_2_raw}}
-    outputs:
-      output_data:
-        mode: rw_mount
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-  resize_mnist_7:
-    type: command
-    component: azureml:dataprep_mnist_jpg_converter:0.1.1
-    inputs:
-      data: ${{parent.inputs.mnist_7_raw}}
-    outputs:
-      output_data:
-        mode: rw_mount
+      - name: Azure -- Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-  resize_mnist_8:
-    type: command
-    component: azureml:dataprep_mnist_jpg_converter:0.1.1
-    inputs:
-      data: ${{parent.inputs.mnist_8_raw}}
-    outputs:
-      output_data:
-        mode: rw_mount
+      - name: Install Azure CLI + ML extension
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          az extension add --name ml -y
+          az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
 
-  split:
-    type: command
-    component: azureml:data_split_mnist_cli:0.1.1
-    inputs:
-      mnist_2: ${{parent.jobs.resize_mnist_2.outputs.output_data}}
-      mnist_7: ${{parent.jobs.resize_mnist_7.outputs.output_data}}
-      mnist_8: ${{parent.jobs.resize_mnist_8.outputs.output_data}}
-      train_test_split_factor: ${{parent.inputs.train_test_split_factor}}
-    outputs:
-      training_data:
-        mode: rw_mount
-      testing_data:
-        mode: rw_mount
+      - name: Azure -- Ensure Compute Exists
+        run: |
+          if ! az ml compute show --name $COMPUTE_NAME > /dev/null 2>&1; then
+            az ml compute create --file ./environment/compute.yaml
+          else
+            echo "✅ Compute '$COMPUTE_NAME' already exists."
+          fi
 
-  training:
-    type: command
-    component: azureml:training_mnist_cli:0.1.0
-    inputs:
-      training_folder: ${{parent.jobs.split.outputs.training_data}}
-      testing_folder: ${{parent.jobs.split.outputs.testing_data}}
-      epochs: ${{parent.inputs.epochs}}
-    outputs:
-      output_folder:
-        mode: rw_mount
+      - name: Azure -- Start Compute (if needed)
+        run: |
+          STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv)
+          echo "Compute status: $STATUS"
+          if [[ "$STATUS" != "Running" ]]; then
+            az ml compute start --name $COMPUTE_NAME
+          else
+            echo "✅ Compute is already running."
+          fi
 
-  register:
-    type: command
-    component: azureml://registries/azureml/components/register_model/versions/0.0.9
-    inputs:
-      model_name: mnist-classifier
-      model_type: custom_model
-      model_path: ${{parent.jobs.training.outputs.output_folder}}
-    outputs:
-      registration_details_folder: ${{parent.outputs.model}}
+      - name: Azure -- Register Environments
+        run: |
+          az ml environment create --file ./environment/pillow.yaml
+          az ml environment create --file ./environment/tensorflow.yaml
+
+      - name: Azure -- Register Components
+        run: |
+          az ml component create --file ./components/components/dataprep/dataprep.yaml
+          az ml component create --file ./components/components/dataprep/data_split.yaml
+          az ml component create --file ./components/components/training/training.yaml
+
+      - name: Azure -- Submit MNIST Training Pipeline
+        run: |
+          az ml job create \
+            --file ./pipeline/pipeline.yaml \
+            --stream \
+            --set name=mnist-pipeline-${{ github.sha }}-${{ github.run_id }}
