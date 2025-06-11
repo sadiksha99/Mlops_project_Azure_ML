@@ -13,7 +13,7 @@ env:
   COMPUTE_NAME: cli-created-machine-v2
 
 jobs:
-  setup-and-run:
+  setup-compute:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,13 +31,14 @@ jobs:
           az extension add --name ml -y
           az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
 
-      - name: Azure -- Ensure Compute Exists
+      - name: Azure -- Create compute if not exists
         run: |
+          echo "Checking if compute '$COMPUTE_NAME' exists..."
           if ! az ml compute show --name $COMPUTE_NAME > /dev/null 2>&1; then
-            echo "Compute does not exist. Creating..."
+            echo "Compute not found — creating..."
             az ml compute create --file ./environment/compute.yaml
           else
-            echo "✅ Compute '$COMPUTE_NAME' already exists."
+            echo "✅ Compute already exists. Skipping creation."
           fi
 
       - name: Azure -- Start Compute (only if stopped)
@@ -46,11 +47,12 @@ jobs:
           echo "Checking compute status..."
           STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv)
           echo "Current status: $STATUS"
+
           if [[ "$STATUS" == "Stopped" ]]; then
             echo "Compute is stopped. Starting..."
             az ml compute start --name $COMPUTE_NAME
           else
-            echo "⚠️ Skip start: Compute can only be started from 'Stopped' state. Current state: $STATUS"
+            echo "⚠️ Skip start: Azure ML only allows starting when status is 'Stopped'. Current: $STATUS"
           fi
 
       - name: Azure -- Register Environments
