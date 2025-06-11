@@ -1,0 +1,57 @@
+name: Download latest model from Azure ML
+
+on:
+  workflow_dispatch:  # Manually trigger this workflow from GitHub UI
+
+jobs:
+  download-model:
+    runs-on: ubuntu-latest
+
+    env:
+      MODEL_NAME: mnist-classifier
+      RESOURCE_GROUP: mlops-project
+      WORKSPACE: sadiksha-sapkota-ml
+      SUBSCRIPTION_ID: c2427130-ac1b-4b29-a374-ae5927fe5c99
+      DOWNLOAD_PATH: models/
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install Azure ML CLI extension
+        run: |
+          az extension add --name ml
+
+      - name: Get latest model version
+        id: latest
+        run: |
+          VERSION=$(az ml model list \
+            --name "$MODEL_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --workspace-name "$WORKSPACE" \
+            --query "[0].version" -o tsv)
+          echo "Latest model version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Download latest model
+        run: |
+          mkdir -p "$DOWNLOAD_PATH"
+          az ml model download \
+            --name "$MODEL_NAME" \
+            --version "$VERSION" \
+            --resource-group "$RESOURCE_GROUP" \
+            --workspace-name "$WORKSPACE" \
+            --download-path "$DOWNLOAD_PATH"
+
+      - name: Commit and push model if changed
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add "$DOWNLOAD_PATH"
+          git diff --cached --quiet || git commit -m "Update model version $VERSION"
+          git push
