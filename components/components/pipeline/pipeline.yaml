@@ -34,21 +34,23 @@ jobs:
       - name: Azure -- Ensure Compute Exists
         run: |
           if ! az ml compute show --name $COMPUTE_NAME > /dev/null 2>&1; then
+            echo "Compute does not exist. Creating..."
             az ml compute create --file ./environment/compute.yaml
           else
             echo "✅ Compute '$COMPUTE_NAME' already exists."
           fi
 
-      - name: Azure -- Start Compute (safe)
+      - name: Azure -- Start Compute (only if stopped)
         continue-on-error: true
         run: |
+          echo "Checking compute status..."
           STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv)
-          echo "Compute status: $STATUS"
+          echo "Current status: $STATUS"
           if [[ "$STATUS" == "Stopped" ]]; then
             echo "Compute is stopped. Starting..."
             az ml compute start --name $COMPUTE_NAME
           else
-            echo "✅ No start needed or not allowed. Status: $STATUS"
+            echo "⚠️ Skip start: Compute can only be started from 'Stopped' state. Current state: $STATUS"
           fi
 
       - name: Azure -- Register Environments
