@@ -11,9 +11,10 @@ env:
   WORKSPACE: sadiksha-sapkota-ml
   LOCATION: westeurope
   COMPUTE_NAME: cli-created-machine-v2
+  MODEL_NAME: mnist-classifier
 
 jobs:
-  setup-compute:
+  azure-pipeline:
     runs-on: ubuntu-latest
 
     steps:
@@ -72,3 +73,33 @@ jobs:
             --file ./components/components/pipeline/pipeline.yaml \
             --stream \
             --set name=mnist-pipeline-${{ github.sha }}-${{ github.run_id }}
+
+  download-model:
+    needs: azure-pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧾 Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🔐 Azure -- Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 📥 Azure -- Download latest model version
+        run: |
+          az extension add --name ml -y
+          az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+
+          VERSION=$(az ml model list -n $MODEL_NAME --query "[0].version" -o tsv)
+          echo "📦 Latest model version: $VERSION"
+
+          mkdir -p downloaded_model
+          az ml model download --name $MODEL_NAME --version $VERSION --download-path downloaded_model
+
+      - name: 📤 Upload model as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnist-model
+          path: downloaded_model
