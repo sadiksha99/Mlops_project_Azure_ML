@@ -42,18 +42,19 @@ jobs:
           fi
 
       - name: Azure -- Start Compute (only if stopped)
-        continue-on-error: true
         run: |
           echo "Checking compute status..."
-          STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv)
-          echo "Current status: $STATUS"
+          STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv || echo "Unknown")
+          echo "Current status: '$STATUS'"
 
           if [[ "$STATUS" == "Stopped" ]]; then
             echo "Compute is stopped. Starting..."
-            az ml compute start --name $COMPUTE_NAME
+            az ml compute start --name $COMPUTE_NAME || echo "⚠️ Failed to start, but continuing..."
           else
-            echo "⚠️ Skip start: Azure ML only allows starting when status is 'Stopped'. Current: $STATUS"
+            echo "⚠️ Skipping start: Compute is '$STATUS'."
           fi
+        continue-on-error: true
+
 
       - name: Azure -- Register Environments
         run: |
