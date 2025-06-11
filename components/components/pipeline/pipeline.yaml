@@ -1,81 +1,92 @@
-name: Azure ML Pipeline Setup
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
 
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+name: mnist-training-pipeline-v12
+display_name: MNIST Full Preprocessing & Training
+experiment_name: mnist-training
+type: pipeline
 
-env:
-  GROUP: mlops-project
-  WORKSPACE: sadiksha-sapkota-ml
-  LOCATION: westeurope
-  COMPUTE_NAME: cli-created-machine-v2
+inputs:
+  train_test_split_factor: 20
+  epochs: 20
+
+  mnist_2_raw:
+    type: uri_folder
+    path: azureml:mnist-2:1
+  mnist_7_raw:
+    type: uri_folder
+    path: azureml:mnist-7:1
+  mnist_8_raw:
+    type: uri_folder
+    path: azureml:mnist-8:1
+
+outputs:
+  model:
+    type: uri_folder
+
+settings:
+  default_compute: azureml:cli-created-machine-v2
 
 jobs:
-  setup-compute:
-    runs-on: ubuntu-latest
 
-    steps:
-      - name: 🧾 Checkout code
-        uses: actions/checkout@v3
+  resize_mnist_2:
+    type: command
+    component: azureml:dataprep_mnist_jpg_converter:0.1.1
+    inputs:
+      data: ${{parent.inputs.mnist_2_raw}}
+    outputs:
+      output_data:
+        mode: rw_mount
 
-      - name: 🔐 Azure -- Login
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+  resize_mnist_7:
+    type: command
+    component: azureml:dataprep_mnist_jpg_converter:0.1.1
+    inputs:
+      data: ${{parent.inputs.mnist_7_raw}}
+    outputs:
+      output_data:
+        mode: rw_mount
 
-      - name: 🛠 Install Azure CLI + ML extension
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-          az extension add --name ml -y
-          az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+  resize_mnist_8:
+    type: command
+    component: azureml:dataprep_mnist_jpg_converter:0.1.1
+    inputs:
+      data: ${{parent.inputs.mnist_8_raw}}
+    outputs:
+      output_data:
+        mode: rw_mount
 
-      - name: ⚙️ Azure -- Create compute if not exists
-        run: |
-          echo "Checking if compute '$COMPUTE_NAME' exists..."
-          if ! az ml compute show --name $COMPUTE_NAME > /dev/null 2>&1; then
-            echo "Compute not found — creating..."
-            az ml compute create --file ./environment/compute.yaml
-          else
-            echo "✅ Compute already exists. Skipping creation."
-          fi
+  split:
+    type: command
+    component: azureml:data_split_mnist_cli:0.1.1
+    inputs:
+      mnist_2: ${{parent.jobs.resize_mnist_2.outputs.output_data}}
+      mnist_7: ${{parent.jobs.resize_mnist_7.outputs.output_data}}
+      mnist_8: ${{parent.jobs.resize_mnist_8.outputs.output_data}}
+      train_test_split_factor: ${{parent.inputs.train_test_split_factor}}
+    outputs:
+      training_data:
+        mode: rw_mount
+      testing_data:
+        mode: rw_mount
 
-      - name: 🚀 Azure -- Start Compute (only if stopped)
-        run: |
-          echo "Checking compute status..."
-          sleep 5  # Add delay to allow proper context after login
+  training:
+    type: command
+    component: azureml:training_mnist_cli:0.1.0
+    inputs:
+      training_folder: ${{parent.jobs.split.outputs.training_data}}
+      testing_folder: ${{parent.jobs.split.outputs.testing_data}}
+      epochs: ${{parent.inputs.epochs}}
+    outputs:
+      output_folder:
+        mode: rw_mount
 
-          STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv 2>/dev/null || echo "Unknown")
-          echo "Current status: '$STATUS'"
+  register:
+    type: command
+    component: azureml://registries/azureml/components/register_model/versions/0.0.9
+    inputs:
+      model_name: mnist-classifier
+      model_type: custom_model
+      model_path: ${{parent.jobs.training.outputs.output_folder}}
+    outputs:
+      registration_details_folder: ${{parent.outputs.model}}
 
-          if [[ "$STATUS" == "Stopped" ]]; then
-            echo "Compute is stopped. Attempting to start..."
-            az ml compute start --name $COMPUTE_NAME || echo "⚠️ Start failed. Ignoring..."
-          elif [[ "$STATUS" == "Running" ]]; then
-            echo "✅ Compute is already running. No need to start."
-          elif [[ "$STATUS" == "Unknown" || -z "$STATUS" ]]; then
-            echo "⚠️ Could not detect compute status properly. Continuing anyway..."
-          else
-            echo "⚠️ Skipping start: Compute is in status '$STATUS'."
-          fi
-        continue-on-error: true
-
-
-      - name: 🧪 Azure -- Register Environments
-        run: |
-          az ml environment create --file ./environment/pillow.yaml
-          az ml environment create --file ./environment/tensorflow.yaml
-
-      - name: 🧩 Azure -- Register Components
-        run: |
-          az ml component create --file ./components/components/dataprep/dataprep.yaml
-          az ml component create --file ./components/components/dataprep/data_split.yaml
-          az ml component create --file ./components/components/training/training.yaml
-
-      - name: 📦 Azure -- Submit MNIST Training Pipeline
-        run: |
-          az ml job create \
-            --file ./pipeline/pipeline.yaml \
-            --stream \
-            --set name=mnist-pipeline-${{ github.sha }}-${{ github.run_id }}
