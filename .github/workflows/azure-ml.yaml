@@ -34,25 +34,15 @@ jobs:
 
       - name: ⚙️ Azure -- Create compute if not exists
         run: |
-          echo "Checking if compute '$COMPUTE_NAME' exists..."
           if ! az ml compute show --name $COMPUTE_NAME > /dev/null 2>&1; then
-            echo "Compute not found — creating..."
             az ml compute create --file ./environment/compute.yaml
-          else
-            echo "✅ Compute already exists. Skipping creation."
           fi
 
       - name: 🚀 Azure -- Start Compute (only if stopped)
         run: |
-          echo "Checking compute status..."
           STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv || echo "Unknown")
-          echo "Current status: '$STATUS'"
-
           if [[ "$STATUS" == "Stopped" ]]; then
-            echo "Compute is stopped. Attempting to start..."
             az ml compute start --name $COMPUTE_NAME || echo "⚠️ Start failed. Ignoring..."
-          else
-            echo "⚠️ Skipping start: Compute is '$STATUS'"
           fi
         continue-on-error: true
 
@@ -98,8 +88,10 @@ jobs:
           mkdir -p downloaded_model
           az ml model download --name $MODEL_NAME --version $VERSION --download-path downloaded_model
 
-      - name: 📤 Upload model as artifact
-        uses: actions/upload-artifact@v4
+      - name: 🚀 Upload model to GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: mnist-model
-          path: downloaded_model
+          tag_name: latest-model
+          files: downloaded_model/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
