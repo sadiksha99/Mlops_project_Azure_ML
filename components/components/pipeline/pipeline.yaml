@@ -17,21 +17,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: 🧾 Checkout code
         uses: actions/checkout@v3
 
-      - name: Azure -- Login
+      - name: 🔐 Azure -- Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Install Azure CLI + ML extension
+      - name: 🛠 Install Azure CLI + ML extension
         run: |
           curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
           az extension add --name ml -y
           az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
 
-      - name: Azure -- Create compute if not exists
+      - name: ⚙️ Azure -- Create compute if not exists
         run: |
           echo "Checking if compute '$COMPUTE_NAME' exists..."
           if ! az ml compute show --name $COMPUTE_NAME > /dev/null 2>&1; then
@@ -41,33 +41,32 @@ jobs:
             echo "✅ Compute already exists. Skipping creation."
           fi
 
-      - name: Azure -- Start Compute (only if stopped)
+      - name: 🚀 Azure -- Start Compute (only if stopped)
         run: |
           echo "Checking compute status..."
           STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv || echo "Unknown")
           echo "Current status: '$STATUS'"
 
           if [[ "$STATUS" == "Stopped" ]]; then
-            echo "Compute is stopped. Starting..."
-            az ml compute start --name $COMPUTE_NAME || echo "⚠️ Failed to start, but continuing..."
+            echo "Compute is stopped. Attempting to start..."
+            az ml compute start --name $COMPUTE_NAME || echo "⚠️ Start failed. Ignoring..."
           else
-            echo "⚠️ Skipping start: Compute is '$STATUS'."
+            echo "⚠️ Skipping start: Compute is '$STATUS'"
           fi
         continue-on-error: true
 
-
-      - name: Azure -- Register Environments
+      - name: 🧪 Azure -- Register Environments
         run: |
           az ml environment create --file ./environment/pillow.yaml
           az ml environment create --file ./environment/tensorflow.yaml
 
-      - name: Azure -- Register Components
+      - name: 🧩 Azure -- Register Components
         run: |
           az ml component create --file ./components/components/dataprep/dataprep.yaml
           az ml component create --file ./components/components/dataprep/data_split.yaml
           az ml component create --file ./components/components/training/training.yaml
 
-      - name: Azure -- Submit MNIST Training Pipeline
+      - name: 📦 Azure -- Submit MNIST Training Pipeline
         run: |
           az ml job create \
             --file ./pipeline/pipeline.yaml \
