@@ -69,6 +69,6 @@ jobs:
       - name: 📦 Azure -- Submit MNIST Training Pipeline
         run: |
           az ml job create \
-            --file ./pipeline/pipeline.yaml \
+            --file ./components/components/pipeline/pipeline.yaml \
             --stream \
             --set name=mnist-pipeline-${{ github.sha }}-${{ github.run_id }}
