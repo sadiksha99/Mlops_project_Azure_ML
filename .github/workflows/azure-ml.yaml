@@ -6,6 +6,12 @@ on:
     branches:
       - main
 
+env:
+  GROUP: mlops-project
+  WORKSPACE: sadiksha-sapkota-ml
+  LOCATION: westeurope
+  COMPUTE_NAME: cli-created-machine-v2
+
 jobs:
   setup-compute:
     runs-on: ubuntu-latest
@@ -19,23 +25,30 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Azure -- Create compute
-        uses: Azure/CLI@v2.1.0
-        with:
-          azcliversion: 2.64.0
-          inlineScript: |
-            rm -f ~/.azure/msal_token_cache.bin
-            az extension add --name ml
-            az configure --defaults group=mlops-project workspace=sadiksha-sapkota-ml location=westeurope
-            az ml compute create --file ./environment/compute.yaml
+      - name: Install Azure CLI + ML extension
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          az extension add --name ml -y
+          az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
 
-      - name: Azure -- Start Compute
-        uses: azure/CLI@v2.1.0
-        with:
-          azcliversion: 2.64.0
-          inlineScript: |
-            rm -f ~/.azure/msal_token_cache.bin
-            az extension add --name ml -y
-            az configure --defaults group=mlops-project workspace=sadiksha-sapkota-ml location=westeurope
-            az ml compute start --name cli-created-machine-v2
-        continue-on-error: true
+      - name: Azure -- Create compute if not exists
+        run: |
+          echo "Checking if compute '$COMPUTE_NAME' exists..."
+          if ! az ml compute show --name $COMPUTE_NAME > /dev/null 2>&1; then
+            echo "Compute not found — creating..."
+            az ml compute create --file ./environment/compute.yaml
+          else
+            echo "✅ Compute already exists. Skipping creation."
+          fi
+
+      - name: Azure -- Start compute if not running
+        run: |
+          echo "Checking compute status..."
+          STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv)
+          echo "Current status: $STATUS"
+          if [[ "$STATUS" != "Running" ]]; then
+            echo "Compute is not running. Starting it..."
+            az ml compute start --name $COMPUTE_NAME
+          else
+            echo "✅ Compute is already running. No action needed."
+          fi
