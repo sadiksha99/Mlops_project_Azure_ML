@@ -42,7 +42,7 @@ jobs:
         run: |
           STATUS=$(az ml compute show --name $COMPUTE_NAME --query "status.state" -o tsv || echo "Unknown")
           if [[ "$STATUS" == "Stopped" ]]; then
-            az ml compute start --name $COMPUTE_NAME || echo "⚠️ Start failed. Ignoring..."
+            az ml compute start --name $COMPUTE_NAME || echo "⚠️ Start failed"
           fi
         continue-on-error: true
 
@@ -77,7 +77,7 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 📥 Azure -- Download latest model version
+      - name: 📥 Azure -- Download latest model
         run: |
           az extension add --name ml -y
           az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
@@ -88,10 +88,15 @@ jobs:
           mkdir -p downloaded_model
           az ml model download --name $MODEL_NAME --version $VERSION --download-path downloaded_model
 
-      - name: 🚀 Upload model to GitHub Release
+          cd downloaded_model
+          zip -r ../mnist-model-$VERSION.zip .
+          cd ..
+
+      - name: 🚀 Upload model as GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: latest-model
-          files: downloaded_model/**
+          tag_name: model-v${{ github.run_number }}
+          name: MNIST Model ${{ github.run_number }}
+          files: mnist-model-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
