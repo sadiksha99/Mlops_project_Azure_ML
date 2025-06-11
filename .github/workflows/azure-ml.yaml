@@ -24,6 +24,7 @@ jobs:
         with:
           azcliversion: 2.64.0
           inlineScript: |
+            rm -f ~/.azure/msal_token_cache.bin
             az extension add --name ml
             az configure --defaults group=mlops-project workspace=sadiksha-sapkota-ml location=westeurope
             az ml compute create --file ./environment/compute.yaml
@@ -33,6 +34,7 @@ jobs:
         with:
           azcliversion: 2.64.0
           inlineScript: |
+            rm -f ~/.azure/msal_token_cache.bin
             az extension add --name ml -y
             az configure --defaults group=mlops-project workspace=sadiksha-sapkota-ml location=westeurope
             az ml compute start --name cli-created-machine-v2
