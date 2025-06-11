@@ -6,12 +6,16 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write  # 👈 Necessary for GitHub Releases to work
+
 env:
   GROUP: mlops-project
   WORKSPACE: sadiksha-sapkota-ml
   LOCATION: westeurope
   COMPUTE_NAME: cli-created-machine-v2
   MODEL_NAME: mnist-classifier
+
 
 jobs:
   azure-pipeline:
